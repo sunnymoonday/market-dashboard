@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시장 변동성 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="data.js"></script>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#f4f4f2; --surface:#fcfcfb; --border:#e3e2de; --grid:#ecebe7;
+  --text:#0b0b0b; --text2:#52514e; --muted:#8a8984;
+  --up:#e34948; --down:#2a78d6; --flat:#8a8984;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
+  --accent:#2a78d6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#111110; --surface:#1a1a19; --border:#2e2e2c; --grid:#262624;
+    --text:#f0efec; --text2:#c3c2b7; --muted:#8f8e86;
+    --up:#e66767; --down:#3987e5;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --accent:#3987e5;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#111110; --surface:#1a1a19; --border:#2e2e2c; --grid:#262624;
+  --text:#f0efec; --text2:#c3c2b7; --muted:#8f8e86;
+  --up:#e66767; --down:#3987e5;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --accent:#3987e5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Noto Sans KR",system-ui,sans-serif;font-size:14px;line-height:1.5}
+.wrap{max-width:1280px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:8px}
+h1{font-size:24px;margin:0}
+.sub{color:var(--text2);font-size:13px}
+nav.tabs{display:flex;gap:4px;margin:16px 0;border-bottom:1px solid var(--border)}
+nav.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 16px;font:inherit;font-weight:500;color:var(--text2);cursor:pointer}
+nav.tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
+h2{font-size:17px;margin:28px 0 10px}
+h3{font-size:14px;margin:0 0 8px;font-weight:700}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}
+.grid{display:grid;gap:12px}
+.kpis{grid-template-columns:repeat(4,1fr)}
+@media (min-width:1100px){#idxKpis{grid-template-columns:repeat(8,1fr)} #estate .kpis{grid-template-columns:repeat(5,1fr)}}
+@media (max-width:640px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.two{grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr))}
+.four{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
+.kpi .grp{font-size:11px;color:var(--muted)}
+.kpi .nm{font-weight:700}
+.kpi .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi .c{font-size:13px;font-weight:500;font-variant-numeric:tabular-nums}
+.kpi .meta{font-size:11px;color:var(--text2);margin-top:4px}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)}
+.chip{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--border);color:var(--text2)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.filters button{font:inherit;font-size:12px;padding:4px 12px;border-radius:99px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer}
+.filters button.on{background:var(--text);color:var(--surface);border-color:var(--text)}
+.chartbox{position:relative;height:280px}
+.chartbox.sm{height:180px}
+table.heat{border-collapse:separate;border-spacing:2px;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+table.heat th{font-weight:500;color:var(--text2);text-align:left;white-space:nowrap;padding:2px 6px}
+table.heat thead th{font-size:10px;text-align:center;padding:2px 0}
+table.heat td{text-align:center;padding:5px 0;border-radius:3px;min-width:34px;color:var(--text)}
+.scroll{overflow-x:auto}
+.news{grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+.news ul{list-style:none;margin:0;padding:0}
+.news li{padding:7px 0;border-top:1px solid var(--grid)}
+.news li:first-child{border-top:0}
+.news a{color:var(--text);text-decoration:none;font-size:13px}
+.news a:hover{text-decoration:underline}
+.news .src{font-size:11px;color:var(--muted)}
+.note{font-size:12px;color:var(--text2)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);margin-bottom:6px}
+.legend i{display:inline-block;width:12px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.setup ol{padding-left:20px} .setup code{background:var(--grid);padding:1px 5px;border-radius:4px}
+.err{color:var(--up);font-size:12px}
+section[hidden]{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>시장 변동성 대시보드</h1>
+      <div class="sub">주식·환율 일일 변동과 서울·수도권 주택시장 · 상승 <span class="up">▲빨강</span> / 하락 <span class="down">▼파랑</span></div>
+    </div>
+    <div class="sub" id="updated"></div>
+  </header>
+  <nav class="tabs">
+    <button class="on" data-tab="stock">주식·환율</button>
+    <button data-tab="estate">부동산</button>
+  </nav>
+
+  <section id="tab-stock">
+    <h2>주요 지수</h2>
+    <div class="grid kpis" id="idxKpis"></div>
+
+    <div class="grid two" style="margin-top:12px">
+      <div class="card">
+        <h3>지수 추이 (기준=100)</h3>
+        <div class="filters" id="grpFilter"></div>
+        <div class="filters" id="rngFilter"></div>
+        <div class="legend" id="trendLegend"></div>
+        <div class="chartbox"><canvas id="trendChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>변동성 비교 (20일 연율화, %)</h3>
+        <div class="note" style="margin-bottom:6px">최근 20거래일 일간수익률 표준편차 × √252. 높을수록 출렁임이 큽니다. 진한 막대는 60일 변동성.</div>
+        <div class="chartbox"><canvas id="volChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3>최근 15거래일 일간 등락률 (%)</h3>
+      <div class="scroll"><table class="heat" id="heat"></table></div>
+    </div>
+
+    <h2>환율</h2>
+    <div class="grid kpis" id="fxKpis"></div>
+    <div class="grid four" style="margin-top:12px" id="fxCharts"></div>
+
+    <h2>주요 이슈 <span class="chip">최근 2일 뉴스</span></h2>
+    <div class="grid news" id="news"></div>
+    <div class="err" id="errs"></div>
+  </section>
+
+  <section id="tab-estate" hidden>
+    <div id="estate"></div>
+  </section>
+</div>
+
+<script>
+const D = window.DASH;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d=2) => v==null ? '-' : v.toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const cls = v => v==null||v===0 ? 'flat' : v>0 ? 'up' : 'down';
+const arrow = v => v==null ? '' : v>0 ? '▲' : v<0 ? '▼' : '–';
+const pct = v => v==null ? '-' : (v>0?'+':'') + fmt(v) + '%';
+const SER = ['--s1','--s2','--s3','--s4'];
+const charts = {};
+
+if(!D){ document.querySelector('.wrap').innerHTML = '<p>data.js 가 없습니다. <code>python update_data.py</code> 를 먼저 실행하세요.</p>'; throw 0; }
+document.getElementById('updated').textContent = '데이터 기준: ' + D.updated;
+
+function baseOpts(extra={}){
+  const grid = css('--grid'), t2 = css('--text2');
+  return Object.assign({
+    responsive:true, maintainAspectRatio:false, animation:false,
+    interaction:{mode:'index', intersect:false},
+    plugins:{legend:{display:false}, tooltip:{backgroundColor:css('--surface'), titleColor:css('--text'), bodyColor:css('--text'), borderColor:css('--border'), borderWidth:1, padding:10}},
+    scales:{
+      x:{grid:{display:false}, ticks:{color:t2, maxTicksLimit:7, maxRotation:0, font:{size:11}}, border:{color:grid}},
+      y:{grid:{color:grid}, ticks:{color:t2, font:{size:11}}, border:{display:false}}
+    }
+  }, extra);
+}
+function mk(id, cfg){ charts[id]?.destroy(); charts[id] = new Chart(document.getElementById(id), cfg); return charts[id]; }
+
+// ---------- KPI cards
+function kpi(o, showGrp){
+  return `<div class="card kpi">
+    ${showGrp?`<div class="grp">${o.group}</div>`:''}
+    <div class="nm">${o.name}</div>
+    <div class="v">${fmt(o.last)}</div>
+    <div class="c ${cls(o.chg1d)}">${arrow(o.chg1d)} ${pct(o.chg1d)}</div>
+    <div class="meta">1주 <span class="${cls(o.chg1w)}">${pct(o.chg1w)}</span> · 1개월 <span class="${cls(o.chg1m)}">${pct(o.chg1m)}</span></div>
+    <div class="meta">변동성(20일) ${fmt(o.vol20,1)}% · ${o.lastDate.slice(5)}</div>
+  </div>`;
+}
+document.getElementById('idxKpis').innerHTML = D.indices.map(o=>kpi(o,true)).join('');
+document.getElementById('fxKpis').innerHTML = D.fx.map(o=>kpi(o,false)).join('');
+
+// ---------- Trend chart (grouped, ≤3 series)
+const groups = [...new Set(D.indices.map(i=>i.group))];
+let curGrp = groups[0], curRng = 126;
+const RNG = [['1개월',21],['3개월',63],['6개월',126],['1년',260]];
+function renderFilters(){
+  document.getElementById('grpFilter').innerHTML = groups.map(g=>`<button class="${g===curGrp?'on':''}" data-g="${g}">${g}</button>`).join('');
+  document.getElementById('rngFilter').innerHTML = RNG.map(([l,n])=>`<button class="${n===curRng?'on':''}" data-n="${n}">${l}</button>`).join('');
+}
+document.getElementById('grpFilter').onclick = e=>{ if(e.target.dataset.g){curGrp=e.target.dataset.g; renderFilters(); drawTrend();} };
+document.getElementById('rngFilter').onclick = e=>{ if(e.target.dataset.n){curRng=+e.target.dataset.n; renderFilters(); drawTrend();} };
+function drawTrend(){
+  const list = D.indices.filter(i=>i.group===curGrp);
+  // align on the longest date axis of the group
+  const base = list.reduce((a,b)=>a.dates.length>=b.dates.length?a:b);
+  const labels = base.dates.slice(-curRng);
+  const ds = list.map((o,k)=>{
+    const map = Object.fromEntries(o.dates.map((d,i)=>[d,o.closes[i]]));
+    let first = null;
+    const data = labels.map(d=>{ const v=map[d]; if(v==null) return null; if(first==null) first=v; return +(v/first*100).toFixed(2); });
+    return {label:o.name, data, borderColor:css(SER[k]), backgroundColor:css(SER[k]), borderWidth:2, pointRadius:0, pointHoverRadius:4, spanGaps:true, tension:0};
+  });
+  document.getElementById('trendLegend').innerHTML = ds.map(d=>`<span><i style="background:${d.borderColor}"></i>${d.label}</span>`).join('');
+  mk('trendChart',{type:'line', data:{labels:labels.map(d=>d.slice(2)), datasets:ds}, options:baseOpts()});
+}
+renderFilters(); drawTrend();
+
+// ---------- Volatility bars
+mk('volChart',{type:'bar', data:{labels:D.indices.map(i=>i.name), datasets:[
+  {label:'20일', data:D.indices.map(i=>i.vol20), backgroundColor:css('--s1')+'99', borderRadius:4, barPercentage:.8, categoryPercentage:.7},
+  {label:'60일', data:D.indices.map(i=>i.vol60), backgroundColor:css('--s1'), borderRadius:4, barPercentage:.8, categoryPercentage:.7},
+]}, options:baseOpts({indexAxis:'y', interaction:{mode:'index',intersect:false},
+  plugins:{legend:{display:true, position:'top', align:'start', labels:{color:css('--text2'), boxWidth:12, font:{size:11}}}, tooltip:baseOpts().plugins.tooltip},
+  scales:{x:{grid:{color:css('--grid')}, ticks:{color:css('--text2'), callback:v=>v+'%'}}, y:{grid:{display:false}, ticks:{color:css('--text')}}}})});
+
+// ---------- Heatmap of daily returns (diverging red/blue)
+function heatColor(v, max){
+  if(v==null) return 'transparent';
+  const a = Math.min(Math.abs(v)/max, 1)*0.85 + 0.08;
+  const c = v>=0 ? css('--up') : css('--down');
+  return c + Math.round(a*255).toString(16).padStart(2,'0');
+}
+(function(){
+  const N = 15;
+  const rows = [...D.indices, ...D.fx];
+  const ref = D.indices[0].dates.slice(-N);
+  let h = '<thead><tr><th></th>' + ref.map(d=>`<th>${d.slice(5)}</th>`).join('') + '</tr></thead><tbody>';
+  rows.forEach((o,ri)=>{
+    const m = Object.fromEntries(o.dates.map((d,i)=>[d,o.rets[i]]));
+    const max = o.symbol.includes('=X') ? 1.0 : 3.0;
+    if(ri===D.indices.length) h += `<tr><th colspan="${N+1}" style="padding-top:8px;color:var(--muted)">환율 (원화 기준, 빨강=원화 약세)</th></tr>`;
+    h += `<tr><th>${o.name}</th>` + ref.map(d=>{const v=m[d]; return `<td style="background:${heatColor(v,max)}" title="${o.name} ${d}: ${v==null?'휴장':pct(v)}">${v==null?'·':v.toFixed(1)}</td>`}).join('') + '</tr>';
+  });
+  document.getElementById('heat').innerHTML = h + '</tbody>';
+})();
+
+// ---------- FX small multiples
+document.getElementById('fxCharts').innerHTML = D.fx.map((o,i)=>`<div class="card"><h3>${o.name} · 6개월</h3><div class="chartbox sm"><canvas id="fx${i}"></canvas></div></div>`).join('');
+D.fx.forEach((o,i)=>{
+  const n=126;
+  mk('fx'+i,{type:'line', data:{labels:o.dates.slice(-n).map(d=>d.slice(2)), datasets:[{label:o.name, data:o.closes.slice(-n), borderColor:css('--s1'), borderWidth:2, pointRadius:0, pointHoverRadius:4}]}, options:baseOpts()});
+});
+
+// ---------- News
+document.getElementById('news').innerHTML = D.news.map(g=>`<div class="card"><h3>${g.label}</h3><ul>${
+  g.items.map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${n.title.replace(/</g,'&lt;')}</a><div class="src">${n.source} · ${n.time}</div></li>`).join('') || '<li class="note">뉴스 없음</li>'
+}</ul></div>`).join('');
+if(D.errors?.length) document.getElementById('errs').textContent = '수집 오류: ' + D.errors.join(' / ');
+
+// ---------- Real estate
+function renderEstate(){
+  const R = D.realestate || {};
+  const el = document.getElementById('estate');
+  if(R.status !== 'ok'){
+    el.innerHTML = `<h2>부동산 데이터 연결 필요</h2><div class="card setup">
+      <p>서울·수도권 거래량·가격지수·분양 데이터는 <b>한국부동산원 R-ONE 공개 API</b>에서 가져옵니다. 무료 인증키가 필요합니다 (키 없이 호출하면 10건 샘플만 반환).</p>
+      <ol>
+        <li><a href="https://www.reb.or.kr/r-one/portal/openapi/openApiDevPage.do" target="_blank" rel="noopener">R-ONE 부동산통계 Open API</a>에서 회원가입 후 인증키 신청 (즉시 발급)</li>
+        <li><code>market_dashboard/config.json</code> 의 <code>"rone_key"</code> 에 키 입력</li>
+        <li><code>python update_data.py</code> 실행 후 이 페이지 새로고침</li>
+      </ol>
+      ${R.message?`<p class="err">${R.message}</p>`:''}</div>`;
+    return;
+  }
+  const PW=R.price_weekly, PM=R.price_monthly, TR=R.trade, SU=R.supply;
+  const last = a => a[a.length-1], prev = a => a[a.length-2];
+  const shortP = p => p.replace(/(\d{4})년 (\d+)월/, (m,y,mo)=>y.slice(2)+'.'+mo.padStart(2,'0'));
+  const chgCard = (title, val, sub, unit='%') => `<div class="card kpi"><div class="nm">${title}</div>
+    <div class="v ${cls(val)}">${arrow(val)} ${val==null?'-':(val>0?'+':'')+fmt(val, unit==='%'?2:0)}${unit}</div><div class="meta">${sub}</div></div>`;
+  const cardSum = (title, v, p, sub) => { const c = p? (v/p-1)*100 : null;
+    return `<div class="card kpi"><div class="nm">${title}</div><div class="v">${v.toLocaleString('ko-KR')}</div>
+    <div class="c ${cls(c)}">${arrow(c)} 전월비 ${pct(c)}</div><div class="meta">${sub}</div></div>`; };
+  const sum = (rs, b) => b.series[rs[0]].values.map((_,i)=>rs.reduce((s,r)=>s+(b.series[r]?.values[i]||0),0));
+
+  let k = '';
+  if(PW){ ['서울','수도권'].forEach(r=>{ const s=PW.series[r]; if(s) k += chgCard(r+' 아파트값 (주간)', last(s.chg), `${last(s.periods)} 주 · 지수 ${fmt(last(s.values))}`); }); }
+  let capTrade=null;
+  if(TR){ capTrade = sum(['서울','경기','인천'], TR);
+    k += cardSum('서울 아파트 매매거래', last(TR.series['서울'].values), prev(TR.series['서울'].values), last(TR.series['서울'].periods)+' · 호');
+    k += cardSum('수도권 아파트 매매거래', last(capTrade), prev(capTrade), last(TR.series['서울'].periods)+' · 서울+경기+인천'); }
+  if(SU && SU.series['수도권']){ const s=SU.series['수도권'].values;
+    k += cardSum('수도권 신규 분양', last(s), prev(s), last(SU.series['수도권'].periods)+' · 세대'); }
+
+  let h = `<h2>서울·수도권 주택시장</h2><div class="grid kpis">${k}</div>
+  <div class="grid two" style="margin-top:12px">
+    ${PW?`<div class="card"><h3>주간 아파트 매매가격지수</h3><div class="note">한국부동산원 주간 아파트가격동향 · 기준=100</div><div class="legend" id="lg-pw"></div><div class="chartbox"><canvas id="c-pw"></canvas></div></div>
+    <div class="card"><h3>주간 매매가격 변동률 (%) · 최근 26주</h3><div class="note">전주 대비 지수 변동률</div><div class="legend" id="lg-pwc"></div><div class="chartbox"><canvas id="c-pwc"></canvas></div></div>`:''}
+    ${TR?`<div class="card"><h3>월별 아파트 매매 거래량 (호)</h3><div class="note">수도권 = 서울+경기+인천 · 신고일 기준 집계라 최근월은 늘어날 수 있음</div><div class="legend" id="lg-tr"></div><div class="chartbox"><canvas id="c-tr"></canvas></div></div>`:''}
+    ${SU?`<div class="card"><h3>신규 분양 세대수</h3><div class="note">한국부동산원 지역별 신규 분양세대수 · 지방 = 전국−수도권</div><div class="legend" id="lg-su"></div><div class="chartbox"><canvas id="c-su"></canvas></div></div>`:''}
+    ${PM?`<div class="card"><h3>월간 아파트 매매가격지수</h3><div class="note">한국부동산원 월간 동향 · 기준=100</div><div class="legend" id="lg-pm"></div><div class="chartbox"><canvas id="c-pm"></canvas></div></div>`:''}
+  </div><p class="note">출처: 한국부동산원 R-ONE 부동산통계 Open API</p>`;
+  if(R.errors?.length) h += `<div class="card" style="margin-top:12px"><div class="err">${R.errors.join('<br>')}</div>
+    <details style="margin-top:8px"><summary class="note">사용 가능한 R-ONE 통계표 목록 (config.json rone_tables 에 ID 지정)</summary><div class="note">${(R.catalogHint||[]).map(c=>`${c.id} · ${c.cycle} · ${c.name}`).join('<br>')}</div></details></div>`;
+  el.innerHTML = h;
+
+  const legend = (id, ds) => document.getElementById(id).innerHTML = ds.map(d=>`<span><i style="background:${d.borderColor||d.backgroundColor}"></i>${d.label}</span>`).join('');
+  const line = (b, regs, n) => regs.filter(r=>b.series[r]).map((r,i)=>({label:r, data:b.series[r].values.slice(-n), borderColor:css(SER[i]), backgroundColor:css(SER[i]), borderWidth:2, pointRadius:0, pointHoverRadius:4}));
+  const stackOpts = () => { const o = baseOpts(); o.scales.x.stacked = true; o.scales.y.stacked = true; o.scales.y.ticks.callback = v=>v.toLocaleString('ko-KR');
+    o.plugins.tooltip.callbacks = {footer: it => '합계 ' + it.reduce((s,x)=>s+x.parsed.y,0).toLocaleString('ko-KR')}; return o; };
+  const bar = (label, data, i) => ({label, data, backgroundColor:css(SER[i]), borderColor:css('--surface'), borderWidth:{top:2}, borderSkipped:false, borderRadius:0, barPercentage:.85});
+
+  if(PW){
+    const ds = line(PW, ['서울','수도권','전국'], 96); legend('lg-pw', ds);
+    mk('c-pw',{type:'line', data:{labels:PW.series['서울'].periods.slice(-96).map(p=>p.slice(2)), datasets:ds}, options:baseOpts()});
+    const ds2 = ['서울','수도권'].map((r,i)=>({label:r, data:PW.series[r].chg.slice(-26), backgroundColor:css(SER[i]), borderRadius:3, barPercentage:.8, categoryPercentage:.8}));
+    legend('lg-pwc', ds2);
+    const o = baseOpts(); o.scales.y.ticks.callback = v=>v+'%';
+    mk('c-pwc',{type:'bar', data:{labels:PW.series['서울'].periods.slice(-26).map(p=>p.slice(5)), datasets:ds2}, options:o});
+  }
+  if(TR){
+    const n=36, ds=['서울','경기','인천'].map((r,i)=>bar(r, TR.series[r].values.slice(-n), i)); legend('lg-tr', ds);
+    mk('c-tr',{type:'bar', data:{labels:TR.series['서울'].periods.slice(-n).map(shortP), datasets:ds}, options:stackOpts()});
+  }
+  if(SU && SU.series['수도권']){
+    const n=36, cap=SU.series['수도권'].values, all=SU.series['전국']?.values||[];
+    const ds=[bar('수도권', cap.slice(-n), 0)];
+    if(all.length) ds.push(bar('지방', all.map((v,i)=>v-cap[i]).slice(-n), 1));
+    legend('lg-su', ds);
+    mk('c-su',{type:'bar', data:{labels:SU.series['수도권'].periods.slice(-n).map(shortP), datasets:ds}, options:stackOpts()});
+  }
+  if(PM){
+    const ds = line(PM, ['서울','수도권','전국'], 45); legend('lg-pm', ds);
+    mk('c-pm',{type:'line', data:{labels:PM.series['서울'].periods.map(shortP), datasets:ds}, options:baseOpts()});
+  }
+}
+
+// ---------- Tabs
+document.querySelector('nav.tabs').onclick = e=>{
+  const t = e.target.dataset.tab; if(!t) return;
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===t));
+  document.getElementById('tab-stock').hidden = t!=='stock';
+  document.getElementById('tab-estate').hidden = t!=='estate';
+  if(t==='estate') renderEstate();
+};
+</script>
+</body>
+</html>
