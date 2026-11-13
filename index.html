@@ -288,6 +288,7 @@ function renderEstate(){
   </div><p class="note">출처: 한국부동산원 R-ONE 부동산통계 Open API</p>`;
   if(R.errors?.length) h += `<div class="card" style="margin-top:12px"><div class="err">${R.errors.join('<br>')}</div>
     <details style="margin-top:8px"><summary class="note">사용 가능한 R-ONE 통계표 목록 (config.json rone_tables 에 ID 지정)</summary><div class="note">${(R.catalogHint||[]).map(c=>`${c.id} · ${c.cycle} · ${c.name}`).join('<br>')}</div></details></div>`;
+  if(R.stale?.length) h += `<p class="note">※ 이번 갱신에서 받지 못해 이전 수집값을 표시 중: ${R.stale.map(s=>({price_weekly:'주간 가격지수',price_monthly:'월간 가격지수',trade:'거래량',supply:'분양'})[s]).join(', ')}</p>`;
   el.innerHTML = h;
 
   const legend = (id, ds) => document.getElementById(id).innerHTML = ds.map(d=>`<span><i style="background:${d.borderColor||d.backgroundColor}"></i>${d.label}</span>`).join('');

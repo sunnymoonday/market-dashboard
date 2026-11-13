@@ -11,6 +11,7 @@ import json
 import math
 import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -152,7 +153,14 @@ REGIONS = ["서울", "수도권", "경기", "인천", "전국"]
 def rone(api, key, **params):
     params.update({"KEY": key, "Type": "json"})
     url = RONE + api + ".do?" + urllib.parse.urlencode(params)
-    d = json.loads(http_get(url, timeout=60))
+    for attempt in range(4):  # 해외(GitHub Actions)에서 연결이 끊기는 경우가 있어 재시도
+        try:
+            d = json.loads(http_get(url, timeout=60))
+            break
+        except Exception:
+            if attempt == 3:
+                raise
+            time.sleep(3 * (attempt + 1))
     if api not in d:  # 오류 응답
         raise RuntimeError(json.dumps(d, ensure_ascii=False)[:300])
     head, body = d[api][0]["head"], d[api][1]["row"] if len(d[api]) > 1 else []
@@ -160,10 +168,10 @@ def rone(api, key, **params):
     return total, body
 
 
-def rone_all(api, key, **params):
+def rone_all(api, key, pSize=1000, **params):
     rows, page = [], 1
     while True:
-        total, body = rone(api, key, pIndex=page, pSize=1000, **params)
+        total, body = rone(api, key, pIndex=page, pSize=pSize, **params)
         rows += body
         if not body or len(rows) >= total:
             return rows
@@ -184,9 +192,24 @@ def region_of(row):
 
 
 def table_series(key, table, cycle, start, item_hint=None, regions=None):
-    rows = rone_all("SttsApiTblData", key, STATBL_ID=table["STATBL_ID"], DTACYCLE_CD=cycle, START_WRTTIME=start)
-    items = sorted({r["ITM_NM"] for r in rows})
+    sid = table["STATBL_ID"]
+    # 1) 시작 시점 한 회차만 받아 지역(CLS_ID)·항목(ITM_ID) 코드를 찾는다 (응답 작게)
+    probe = rone_all("SttsApiTblData", key, pSize=500, STATBL_ID=sid, DTACYCLE_CD=cycle, START_WRTTIME=start, END_WRTTIME=start)
+    items = sorted({r["ITM_NM"] for r in probe})
     item = next((i for i in items if item_hint and item_hint in i), items[0] if items else None)
+    itm_id = next((r["ITM_ID"] for r in probe if r["ITM_NM"] == item), None)
+    cls_ids = {}
+    for r in probe:
+        full = (r.get("CLS_FULLNM") or r.get("CLS_NM") or "").strip()
+        if full in (regions or REGIONS):
+            cls_ids.setdefault(full, r["CLS_ID"])
+    # 2) 필요한 지역만 전체 기간 조회
+    rows = []
+    for reg, cid in cls_ids.items():
+        q = dict(STATBL_ID=sid, DTACYCLE_CD=cycle, START_WRTTIME=start, CLS_ID=cid)
+        if itm_id is not None:
+            q["ITM_ID"] = itm_id
+        rows += rone_all("SttsApiTblData", key, pSize=500, **q)
     out = {}
     for r in rows:
         full = (r.get("CLS_FULLNM") or r.get("CLS_NM") or "").strip()
@@ -309,12 +332,24 @@ def main():
     except Exception as e:
         data["realestate"] = {"status": "error", "message": str(e)}
         print("ERR 부동산", e)
-    if data["realestate"].get("status") != "ok":
-        prev = load_previous().get("realestate")
-        if prev and prev.get("status") == "ok":
-            prev.setdefault("errors", []).append("이번 갱신 실패 — 이전 수집 데이터 표시 중")
+    prev = load_previous().get("realestate") or {}
+    if prev.get("status") == "ok":
+        cur = data["realestate"]
+        if cur.get("status") != "ok":
+            prev["stale"] = sorted(k for k in ("price_weekly", "price_monthly", "trade", "supply") if prev.get(k))
             data["realestate"] = prev
-            print("    부동산: 이전 데이터 유지")
+            print("    부동산: 전체 이전 데이터 유지")
+        else:
+            cur["stale"] = []
+            for k in ("price_weekly", "price_monthly", "trade", "supply"):
+                if not cur.get(k) and prev.get(k):
+                    cur[k] = prev[k]
+                    cur["stale"].append(k)
+                    print("    부동산: 이전 데이터 유지 →", k)
+    # 실패 메시지는 로그에만 남기고 화면에는 '이전 데이터' 표시만
+    re_ = data["realestate"]
+    if re_.get("status") == "ok":
+        re_["errors"] = [e for e in re_.get("errors", []) if e.split(":")[0] not in re_.get("stale", [])]
 
     with open(os.path.join(HERE, "data.js"), "w", encoding="utf-8") as f:
         f.write("window.DASH = " + json.dumps(data, ensure_ascii=False) + ";\n")
