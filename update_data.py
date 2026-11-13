@@ -225,6 +225,28 @@ def table_series(key, table, cycle, start, item_hint=None, regions=None):
             "unit": rows[0].get("UI_NM") if rows else "", "series": series}
 
 
+def fetch_unsold(key, sid, start, provinces=("서울", "인천", "경기")):
+    rows = rone_all("SttsApiTblData", key, pSize=300, STATBL_ID=sid, DTACYCLE_CD="MM", START_WRTTIME=start)
+    periods = sorted({r["WRTTIME_IDTFR_ID"] for r in rows})
+    desc = {r["WRTTIME_IDTFR_ID"]: r["WRTTIME_DESC"] for r in rows}
+    idx = {p: i for i, p in enumerate(periods)}
+    out = {}
+    for r in rows:
+        parts = (r.get("CLS_FULLNM") or "").split(">")
+        if len(parts) != 2 or parts[0] not in provinces or r["DTA_VAL"] is None:
+            continue
+        prov, name = parts
+        reg = out.setdefault(prov, {"total": [None] * len(periods), "districts": {}})
+        if name == "계":
+            reg["total"][idx[r["WRTTIME_IDTFR_ID"]]] = r["DTA_VAL"]
+        else:
+            reg["districts"].setdefault(name, [None] * len(periods))[idx[r["WRTTIME_IDTFR_ID"]]] = r["DTA_VAL"]
+    if not out:
+        raise RuntimeError("미분양 데이터 없음")
+    return {"table": "미분양주택현황", "id": sid, "unit": rows[0].get("UI_NM") or "호",
+            "periods": [desc[p] for p in periods], "regions": out}
+
+
 def fetch_realestate(cfg):
     key = (os.environ.get("RONE_KEY") or cfg.get("rone_key") or "").strip()
     if not key:
@@ -267,6 +289,11 @@ def fetch_realestate(cfg):
                 res[name]["unit"] = "호"
         except Exception as e:
             res["errors"].append(f"{name}: {e}")
+    # 미분양: 서울·인천 자치구(군)별, 경기 시·군별
+    try:
+        res["unsold"] = fetch_unsold(key, ov.get("unsold") or "T237973129847263", str(now.year - 2) + "01")
+    except Exception as e:
+        res["errors"].append(f"unsold: {e}")
     # 주간 가격지수 → 주간 변동률(%) 추가
     pw = res.get("price_weekly")
     if pw:
@@ -336,12 +363,12 @@ def main():
     if prev.get("status") == "ok":
         cur = data["realestate"]
         if cur.get("status") != "ok":
-            prev["stale"] = sorted(k for k in ("price_weekly", "price_monthly", "trade", "supply") if prev.get(k))
+            prev["stale"] = sorted(k for k in ("price_weekly", "price_monthly", "trade", "supply", "unsold") if prev.get(k))
             data["realestate"] = prev
             print("    부동산: 전체 이전 데이터 유지")
         else:
             cur["stale"] = []
-            for k in ("price_weekly", "price_monthly", "trade", "supply"):
+            for k in ("price_weekly", "price_monthly", "trade", "supply", "unsold"):
                 if not cur.get(k) and prev.get(k):
                     cur[k] = prev[k]
                     cur["stale"].append(k)
