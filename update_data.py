@@ -259,6 +259,14 @@ def fetch_realestate(cfg):
 
 
 # ---------------------------------------------------------------- main
+def load_previous():
+    try:
+        txt = open(os.path.join(HERE, "data.js"), encoding="utf-8").read()
+        return json.loads(txt[txt.index("{"): txt.rstrip().rstrip(";").rindex("}") + 1])
+    except Exception:
+        return {}
+
+
 def main():
     cfg_path = os.path.join(HERE, "config.json")
     cfg = json.load(open(cfg_path, encoding="utf-8")) if os.path.exists(cfg_path) else {}
@@ -301,6 +309,12 @@ def main():
     except Exception as e:
         data["realestate"] = {"status": "error", "message": str(e)}
         print("ERR 부동산", e)
+    if data["realestate"].get("status") != "ok":
+        prev = load_previous().get("realestate")
+        if prev and prev.get("status") == "ok":
+            prev.setdefault("errors", []).append("이번 갱신 실패 — 이전 수집 데이터 표시 중")
+            data["realestate"] = prev
+            print("    부동산: 이전 데이터 유지")
 
     with open(os.path.join(HERE, "data.js"), "w", encoding="utf-8") as f:
         f.write("window.DASH = " + json.dumps(data, ensure_ascii=False) + ";\n")
