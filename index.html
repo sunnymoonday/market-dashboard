@@ -63,11 +63,14 @@ h3{font-size:14px;margin:0 0 8px;font-weight:700}
 .filters button.on{background:var(--text);color:var(--surface);border-color:var(--text)}
 .chartbox{position:relative;height:280px}
 .chartbox.sm{height:180px}
-table.heat{border-collapse:separate;border-spacing:2px;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
-table.heat th{font-weight:500;color:var(--text2);text-align:left;white-space:nowrap;padding:2px 6px}
-table.heat thead th{font-size:10px;text-align:center;padding:2px 0}
-table.heat td{text-align:center;padding:5px 0;border-radius:3px;min-width:34px;color:var(--text)}
-.scroll{overflow-x:auto}
+.daily{grid-template-columns:repeat(4,1fr)}
+@media (max-width:900px){.daily{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:480px){.daily{grid-template-columns:1fr}}
+.daily .card{padding:12px 12px 8px}
+.daily .hd{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.daily .sum{font-size:12px;font-variant-numeric:tabular-nums}
+.daily .meta{font-size:11px;color:var(--text2)}
+.chartbox.xs{height:130px}
 .news{grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
 .news ul{list-style:none;margin:0;padding:0}
 .news li{padding:7px 0;border-top:1px solid var(--grid)}
@@ -116,10 +119,11 @@ section[hidden]{display:none}
       </div>
     </div>
 
-    <div class="card" style="margin-top:12px">
-      <h3>최근 15거래일 일간 등락률 (%)</h3>
-      <div class="scroll"><table class="heat" id="heat"></table></div>
-    </div>
+    <h2>최근 15거래일 일간 등락률 (%)</h2>
+    <div class="note" style="margin-bottom:8px">막대 하나가 하루의 등락률입니다. 지수끼리, 환율끼리 세로축 범위가 같아 출렁임 크기를 바로 비교할 수 있어요. 빈 칸은 휴장일.</div>
+    <div class="grid daily" id="dailyIdx"></div>
+    <h3 style="margin:16px 0 8px">환율 <span class="note" style="font-weight:400">(원화 기준 · 빨강 = 원화 약세)</span></h3>
+    <div class="grid daily" id="dailyFx"></div>
 
     <h2>환율</h2>
     <div class="grid kpis" id="fxKpis"></div>
@@ -210,26 +214,39 @@ mk('volChart',{type:'bar', data:{labels:D.indices.map(i=>i.name), datasets:[
   plugins:{legend:{display:true, position:'top', align:'start', labels:{color:css('--text2'), boxWidth:12, font:{size:11}}}, tooltip:baseOpts().plugins.tooltip},
   scales:{x:{grid:{color:css('--grid')}, ticks:{color:css('--text2'), callback:v=>v+'%'}}, y:{grid:{display:false}, ticks:{color:css('--text')}}}})});
 
-// ---------- Heatmap of daily returns (diverging red/blue)
-function heatColor(v, max){
-  if(v==null) return 'transparent';
-  const a = Math.min(Math.abs(v)/max, 1)*0.85 + 0.08;
-  const c = v>=0 ? css('--up') : css('--down');
-  return c + Math.round(a*255).toString(16).padStart(2,'0');
-}
-(function(){
+// ---------- Daily returns: small-multiple bar charts (red up / blue down)
+function dailyCharts(list, boxId, prefix){
   const N = 15;
-  const rows = [...D.indices, ...D.fx];
-  const ref = D.indices[0].dates.slice(-N);
-  let h = '<thead><tr><th></th>' + ref.map(d=>`<th>${d.slice(5)}</th>`).join('') + '</tr></thead><tbody>';
-  rows.forEach((o,ri)=>{
-    const m = Object.fromEntries(o.dates.map((d,i)=>[d,o.rets[i]]));
-    const max = o.symbol.includes('=X') ? 1.0 : 3.0;
-    if(ri===D.indices.length) h += `<tr><th colspan="${N+1}" style="padding-top:8px;color:var(--muted)">환율 (원화 기준, 빨강=원화 약세)</th></tr>`;
-    h += `<tr><th>${o.name}</th>` + ref.map(d=>{const v=m[d]; return `<td style="background:${heatColor(v,max)}" title="${o.name} ${d}: ${v==null?'휴장':pct(v)}">${v==null?'·':v.toFixed(1)}</td>`}).join('') + '</tr>';
+  // 공통 날짜축: 그룹 전체 날짜의 합집합 중 최근 N일
+  const all = [...new Set(list.flatMap(o=>o.dates))].sort().slice(-N);
+  const rows = list.map(o=>{ const m = Object.fromEntries(o.dates.map((d,i)=>[d,o.rets[i]])); return all.map(d=>m[d] ?? null); });
+  const lim = Math.ceil(Math.max(...rows.flat().filter(v=>v!=null).map(Math.abs), 0.5) * 2) / 2;
+  document.getElementById(boxId).innerHTML = list.map((o,i)=>{
+    const v = rows[i].filter(x=>x!=null);
+    const cum = v.length ? (v.reduce((p,x)=>p*(1+x/100),1)-1)*100 : null;
+    const big = v.length ? Math.max(...v.map(Math.abs)) : null;
+    return `<div class="card"><div class="hd"><h3 style="margin:0">${o.name}</h3>
+      <span class="sum ${cls(cum)}">15일 ${pct(cum)}</span></div>
+      <div class="meta">최대 일변동 ±${fmt(big)}% · 상승 ${v.filter(x=>x>0).length}일 / 하락 ${v.filter(x=>x<0).length}일</div>
+      <div class="chartbox xs"><canvas id="${prefix}${i}"></canvas></div></div>`;
+  }).join('');
+  const up = css('--up'), dn = css('--down');
+  list.forEach((o,i)=>{
+    const data = rows[i];
+    const opts = baseOpts();
+    opts.interaction = {mode:'index', intersect:false};
+    opts.scales.y.min = -lim; opts.scales.y.max = lim;
+    opts.scales.y.ticks = {color:css('--text2'), font:{size:10}, maxTicksLimit:5, callback:v=>v+'%'};
+    opts.scales.y.grid = {color: c => c.tick.value===0 ? css('--muted') : css('--grid')};
+    opts.scales.x.ticks = {color:css('--text2'), font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:4};
+    opts.plugins.tooltip.callbacks = {label: c => c.raw==null ? '휴장' : `${o.name} ${pct(c.raw)}`};
+    mk(prefix+i, {type:'bar', data:{labels:all.map(d=>d.slice(5)), datasets:[{
+      label:o.name, data, backgroundColor:data.map(v=>v>=0?up:dn), borderRadius:3, barPercentage:.8, categoryPercentage:.9
+    }]}, options:opts});
   });
-  document.getElementById('heat').innerHTML = h + '</tbody>';
-})();
+}
+dailyCharts(D.indices, 'dailyIdx', 'di');
+dailyCharts(D.fx, 'dailyFx', 'df');
 
 // ---------- FX small multiples
 document.getElementById('fxCharts').innerHTML = D.fx.map((o,i)=>`<div class="card"><h3>${o.name} · 6개월</h3><div class="chartbox sm"><canvas id="fx${i}"></canvas></div></div>`).join('');
